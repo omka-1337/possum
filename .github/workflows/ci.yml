@@ -57,6 +57,8 @@ jobs:
         with:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.mod
+          # go.mod names only the minor version: take its latest patch, with the standard library fixes.
+          check-latest: true
       - name: Format
         run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt -w ."; exit 1; }
       - name: Vet
