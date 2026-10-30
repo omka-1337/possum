@@ -84,6 +84,7 @@ The other bundled templates show the rest:
 | [cs16.yaml](https://github.com/omka-1337/possum/blob/releases/templates/cs16.yaml) | an install script with steamcmd, a command line built from fields, a `cvars` config |
 | [valheim.yaml](https://github.com/omka-1337/possum/blob/releases/templates/valheim.yaml) | two ports that move together, parts of the volume mounted at several paths, a game without console commands |
 | [minecraft-bedrock.yaml](https://github.com/omka-1337/possum/blob/releases/templates/minecraft-bedrock.yaml) | two templates shown as one game with an edition switch |
+| [minecraft-horizon.yaml](https://github.com/omka-1337/possum/blob/releases/templates/minecraft-horizon.yaml) | an install image other than the runtime one, a native server in a plain Debian image |
 
 ## Reference
 

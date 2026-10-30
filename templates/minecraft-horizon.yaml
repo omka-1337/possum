@@ -1,0 +1,138 @@
+id: minecraft-horizon
+name: "Minecraft: Java Edition (Horizon)"
+description: Experimental. Java Edition 26.3 rewritten in Rust; vanilla clients join it, plugins and mods don't run.
+# Next to Java and Bedrock in the Minecraft tile.
+group: { id: minecraft, name: Minecraft, variant: Horizon (Rust), order: 2 }
+icon: icons/minecraft-java.svg
+color: "#2d4a1e"
+
+fields:
+  # Horizon only ships nightly builds, several a day: this one was tried with possum.
+  - id: horizon_version
+    label: Horizon release
+    type: string
+    default: v0.2.97
+    pattern: '^v\d+\.\d+\.\d+$'
+    help_url: https://github.com/horizon-rust/horizon/releases
+    editable: true
+    on_change: reinstall
+
+  - id: eula
+    label: I accept the Minecraft EULA
+    type: boolean
+    must_be: true
+    help_url: https://aka.ms/MinecraftEULA
+
+ports:
+  - { name: game, container: 25565, protocol: tcp, default_host: 25565 }
+
+# Downloads Horizon and the 26.3 client and server jars from Mojang, and prepares the game files from them.
+install:
+  image: eclipse-temurin:25-jre
+  script: install/minecraft-horizon.sh
+  env:
+    HORIZON_VERSION: "{{ horizon_version }}"
+
+runtime:
+  # The engine is one native program: it needs nothing but glibc.
+  image: debian:bookworm-slim
+  # The world and vanilla's files go in the current folder. The game reads eula.txt as vanilla does;
+  # the form already made the owner accept it.
+  entrypoint: ["sh", "-c", 'cd /data && echo eula=true > eula.txt && exec horizon/horizon-engine "$@"', "horizon"]
+  command:
+    - --resources
+    - horizon/resources
+    - --dedicated
+    - --nogui
+    - --port
+    - "25565"
+  env:
+    HORIZON_NO_AUDIO: "1"
+  stop:
+    command: stop
+    timeout: 120
+  data_path: /data
+  resources:
+    disk_mb: "10240"
+    # About 0.7 GB with one player and 1.1 GB with 50, by Horizon's own benchmark.
+    memory_mb: "2048"
+
+config_files:
+  - id: server_properties
+    label: Server properties
+    path: server.properties
+    format: properties
+    managed: [server-port]
+    hints:
+      motd: { label: Message of the day }
+      difficulty: { label: Difficulty, type: select, options: [peaceful, easy, normal, hard], help: "For a new world. In an existing one use the console: difficulty hard" }
+      gamemode: { label: Default game mode, type: select, options: [survival, creative, adventure, spectator], help: For players joining for the first time. }
+      hardcore: { label: Hardcore, type: boolean, help: For a new world. }
+      pvp: { label: PvP, type: boolean }
+      max-players: { label: Max players, type: number, min: 1, max: 1000 }
+      online-mode: { label: Online mode, type: boolean, help: "Check accounts with Mojang. Horizon's own client joins offline servers only." }
+      white-list: { label: Whitelist, type: boolean }
+      allow-flight: { label: Allow flight, type: boolean }
+      spawn-protection: { label: Spawn protection radius, type: number, min: 0, max: 1000 }
+      view-distance: { label: View distance, type: number, min: 2, max: 32 }
+      simulation-distance: { label: Simulation distance, type: number, min: 3, max: 32 }
+      level-seed: { label: World seed, help: Only used when a new world is generated. }
+
+backup:
+  # Horizon and its prepared files come back with a reinstall; a restore leaves them in place.
+  exclude: [horizon, logs]
+  before: [save-off, save-all flush]
+  after: [save-on]
+  wait: 5
+
+console:
+  # Vanilla's log pattern: "[12:00:00] [Server thread/WARN]: ..."
+  highlight:
+    - { pattern: '^\[[^\]]*\] \[[^\]]*/(ERROR|FATAL)\]', color: red }
+    - { pattern: '^\[[^\]]*\] \[[^\]]*/WARN\]', color: yellow }
+
+# Horizon writes vanilla's log lines and ban lists: the Java template's section, but for system messages.
+players:
+  key: name
+  events:
+    - { type: info, pattern: 'UUID of player (?P<name>\w{1,16}) is (?P<id>[0-9a-f-]{36})' }
+    - { type: join, pattern: '\]: (?P<name>\w{1,16})\[/(?P<ip>[^\]]+):\d+\] logged in with entity id' }
+    # Unlike vanilla, Horizon prints system messages as "System chat: Steve left the game".
+    - { type: leave, pattern: '\]: (?:System chat: )?(?P<name>\w{1,16}) left the game$' }
+  status:
+    command: list
+    # Command feedback too: "System chat: There are 0 of a max of 20 players online: "
+    names: '\]: (?:System chat: )?There are \d+ of a max of \d+ players online:\s*(?P<names>.*)$'
+  avatars: minecraft
+  kick: ["kick {{ name }}{{ ' ' ~ reason if reason }}"]
+  bans:
+    by: name
+    add: ["ban {{ name }}{{ ' ' ~ reason if reason }}"]
+    remove: ["pardon {{ name }}"]
+    file:
+      path: banned-players.json
+      format: json
+      field: name
+      entry:
+        uuid: "{{ id }}"
+        name: "{{ name }}"
+        created: "{{ now }}"
+        source: possum
+        expires: "{{ expires }}"
+        reason: "{{ reason or 'Banned by an operator.' }}"
+  ip_bans:
+    add: ["ban-ip {{ ip }}{{ ' ' ~ reason if reason }}"]
+    remove: ["pardon-ip {{ ip }}"]
+    file:
+      path: banned-ips.json
+      format: json
+      field: ip
+      entry:
+        ip: "{{ ip }}"
+        created: "{{ now }}"
+        source: possum
+        expires: "{{ expires }}"
+        reason: "{{ reason or 'Banned by an operator.' }}"
+
+query:
+  protocol: minecraft
